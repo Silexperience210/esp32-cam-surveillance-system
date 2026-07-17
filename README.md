@@ -27,7 +27,7 @@ _Alerts reach you anywhere — phone, desktop, even your smartwatch._
 ### 📺 ESP32-S3 Tactile Monitor (4827S043, 4.3″ 480×272)
 - **Multi-camera grid view** (up to 4 cameras, round-robin refresh)
 - **Tap a tile → full-screen live stream** (~10–15 fps), tap again → back to grid
-- **Automatic network scan**: discovers ESP32-CAM cameras on the LAN by itself
+- **Automatic discovery**: finds cameras instantly via **mDNS** (with IP-scan fallback)
 - **On-screen keypad**: add a camera manually by IP (name auto-fetched)
 - **LED toggle button** in full-screen view
 - **Same web portal** for WiFi provisioning — no code editing
@@ -237,7 +237,7 @@ esp32-cam-surveillance-system/
 - [ ] Home Assistant integration (MJPEG camera + MQTT alerts)
 - [ ] Remote access via Tailscale
 - [ ] Auto full-screen on the monitor when a camera triggers
-- [ ] mDNS camera auto-discovery
+- [x] mDNS camera auto-discovery (instant — cameras also reachable at `http://<name>.local`)
 
 ## ⚠️ Disclaimer
 

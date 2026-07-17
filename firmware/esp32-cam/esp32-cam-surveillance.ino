@@ -19,6 +19,7 @@
 #include "SD_MMC.h"
 #include "time.h"
 #include <Preferences.h>
+#include <ESPmDNS.h>
 #include "avi_writer.h"
 
 // ================ CONFIGURATION : VIA LE PORTAIL WEB ================
@@ -1005,6 +1006,23 @@ void setup() {
 
   sdReady = initSD();
   startCameraServer();
+
+  // mDNS : la camera s'annonce sur le reseau (decouverte instantanee
+  // par le moniteur + acces direct via http://<nom-slug>.local)
+  {
+    String slug = "";
+    String lower = cfgCamName;
+    lower.toLowerCase();
+    for (size_t i = 0; i < lower.length(); i++) {
+      char c = lower[i];
+      slug += isalnum(c) ? String(c) : String("-");
+    }
+    if (MDNS.begin(slug.c_str())) {
+      MDNS.addService("esp32cam", "tcp", 80);
+      MDNS.addServiceTxt("esp32cam", "tcp", "name", cfgCamName.c_str());
+      Serial.println("mDNS actif : http://" + slug + ".local");
+    }
+  }
 
   // Watchdog anti-plantage sur l'autre coeur
   lastWifiOkMs = millis();

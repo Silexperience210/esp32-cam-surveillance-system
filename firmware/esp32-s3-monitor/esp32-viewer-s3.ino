@@ -18,6 +18,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
+#include <ESPmDNS.h>
 #include "esp_http_server.h"
 #include "esp_heap_caps.h"
 
@@ -398,11 +399,13 @@ bool readOneFrame(WiFiClient* s) {
   char numBuf[12];
   int ni = 0;
   unsigned long start = millis();
+  // peek() : ne pas consommer le \r final (sinon le \r\n\r\n suivant est casse)
   while (ni < 11 && millis() - start < 1000) {
     if (s->available()) {
-      char c = (char)s->read();
-      if (c >= '0' && c <= '9') numBuf[ni++] = c;
-      else if (ni > 0) break;
+      char c = (char)s->peek();
+      if (c >= '0' && c <= '9') { numBuf[ni++] = (char)s->read(); }
+      else if (ni > 0) break;          // fin du nombre, \r reste dans le flux
+      else s->read();                  // ignore les espaces
     } else delay(1);
   }
   numBuf[ni] = 0;
@@ -675,10 +678,35 @@ void updateTile(int idx) {
 void startScan() {
   viewMode = MODE_SCAN;
   nbCams = 0;
+  bool cancelled = false;
+
+  // 1) Decouverte mDNS (instantane) : les cameras a jour s'annoncent
+  drawScanProgress(0, "Recherche mDNS...");
+  int found = MDNS.queryService("esp32cam", "tcp");
+  Serial.printf("mDNS : %d camera(s) detectee(s)\n", found);
+  for (int i = 0; i < found && nbCams < MAX_CAMS; i++) {
+    String ip = MDNS.IP(i).toString();
+    String name;
+    if (!probeCam(ip, name, ADD_TIMEOUT_MS)) name = MDNS.hostname(i);
+    cams[nbCams].ip = ip;
+    cams[nbCams].name = name;
+    nbCams++;
+    Serial.printf("  -> %s (%s)\n", name.c_str(), ip.c_str());
+  }
+
+  // 2) Fallback : scan IP complet si aucune camera mDNS trouvee
+  if (nbCams > 0) {
+    saveCams();
+    for (int i = 0; i < 4; i++) camOnline[i] = false;
+    gridCursor = 0;
+    viewMode = MODE_GRID;
+    drawGridFrame();
+    return;
+  }
+
   IPAddress ip = WiFi.localIP();
   String subnet = String(ip[0]) + "." + String(ip[1]) + "." + String(ip[2]) + ".";
   int myLast = ip[3];
-  bool cancelled = false;
 
   for (int i = 1; i <= 254 && !cancelled; i++) {
     if (i == myLast) continue;
@@ -920,6 +948,9 @@ void setup() {
 
   loadCams();
   Serial.printf("%d camera(s) configuree(s)\n", nbCams);
+
+  // mDNS : permet de decouvrir les cameras du reseau
+  if (MDNS.begin("esp32-viewer")) Serial.println("mDNS actif (viewer)");
 
   tft.fillScreen(TFT_BLACK);
   drawGridFrame();
