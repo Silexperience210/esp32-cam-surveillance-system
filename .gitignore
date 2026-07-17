@@ -1,0 +1,18 @@
+# Build artifacts
+build/
+*.bin
+*.elf
+*.hex
+*.map
+
+# OS
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/
+*.code-workspace
+
+# Python
+__pycache__/
+*.pyc
