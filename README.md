@@ -2,9 +2,13 @@
 
 > A complete DIY smart surveillance ecosystem: ESP32-CAM cameras with Telegram alerts, a tactile multi-camera monitoring console, automatic night lighting, video recording — and a 3D-printable wall-mount case.
 
+![The running system: S3 monitor console with two ESP32-CAM cameras](hardware/images/setup_real.jpg)
+
 ---
 
 ## ✨ Features
+
+<img src="hardware/images/telegram_watch.jpg" width="240" align="right" alt="Instant Telegram alert on a smartwatch">
 
 ### 📷 ESP32-CAM Camera Firmware
 - **Live MJPEG streaming** in any web browser (`/stream`)
@@ -15,6 +19,10 @@
 - **Web configuration portal**: zero hardcoded credentials — the camera creates its own WiFi AP on first boot
 - **Self-healing watchdog**: auto-restart on frozen loop, stalled stream or lost WiFi (24/7 operation)
 - **Human-readable camera identity** via `/info` JSON endpoint (used by the monitor console)
+
+_Alerts reach you anywhere — phone, desktop, even your smartwatch._
+
+<br clear="both"/>
 
 ### 📺 ESP32-S3 Tactile Monitor (4827S043, 4.3″ 480×272)
 - **Multi-camera grid view** (up to 4 cameras, round-robin refresh)
@@ -116,6 +124,8 @@ On first boot the monitor shows its own provisioning screen (`ESP32-Viewer-Setup
 ---
 
 ## 🤖 Telegram Commands
+
+![Telegram bot: boot message and command list](hardware/images/telegram_bot.jpg)
 
 | Command | Action |
 |---------|--------|
