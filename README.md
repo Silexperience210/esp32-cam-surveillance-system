@@ -183,7 +183,9 @@ Both light up together — perfect for night illumination. For a high-power LED,
 
 ---
 
-## 🖨️ 3D-Printed Case
+## 🖨️ 3D-Printed Cases
+
+### Monitor case (wall-mount / tabletop)
 
 Parametric OpenSCAD source + ready-to-print STLs in [`hardware/case/`](hardware/case).
 
@@ -203,6 +205,21 @@ Parametric OpenSCAD source + ready-to-print STLs in [`hardware/case/`](hardware/
 openscad -o boitier_corps.stl -D part=1 boitier_4827S043.scad
 ```
 
+### Camera case (ESP32-CAM + programming board)
+
+Snap-fit enclosure for an ESP32-CAM stacked on its **ESP32-CAM-MB USB programming board** — thin **1.6 mm walls** with a vertical ribbed texture. STLs + parametric source in [`hardware/case-esp32cam/`](hardware/case-esp32cam).
+
+![Camera case preview](hardware/images/preview_case_esp32cam.png)
+
+| Part | File | Print orientation |
+|------|------|-------------------|
+| Body | `esp32cam_case_body.stl` | Upright, bottom on the bed |
+| Friction lid | `esp32cam_case_lid.stl` | Plate on the bed |
+
+- No supports · PLA/PETG · 0.2 mm layers · ~1h30 total
+- Lens / flash / micro-USB / microSD / antenna openings + 2× M3 mount holes
+- **Measure your stack** and adjust `in_l / in_w / in_h`, `cam_z`, `lid_clr`… at the top of `esp32cam_mb_case.scad`
+
 ---
 
 ## 📁 Project Structure
@@ -216,7 +233,8 @@ esp32-cam-surveillance-system/
 │   └── esp32-s3-monitor/       # Tactile monitor firmware (LovyanGFX)
 │       └── esp32-viewer-s3.ino
 ├── hardware/
-│   ├── case/                   # OpenSCAD source + STLs
+│   ├── case/                   # Monitor case (OpenSCAD + STLs)
+│   ├── case-esp32cam/          # Camera case for ESP32-CAM + MB board
 │   └── images/                 # Renders & sample captures
 ├── docs/
 ├── LICENSE
