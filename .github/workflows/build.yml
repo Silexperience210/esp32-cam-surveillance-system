@@ -35,6 +35,13 @@ jobs:
 
       # arduino-cli exige que le .ino principal porte le nom de son dossier.
       # Ce n'est pas le cas dans le repo, on recopie donc dans un dossier conforme.
+      - name: Build stylesheet
+        run: |
+          npm i -D tailwindcss@3.4.17
+          npx tailwindcss -c docs/flasher/tailwind.config.js \
+            -i docs/flasher/input.css -o docs/flasher/style.css --minify
+        working-directory: .
+
       - name: Stage sketches
         run: |
           mkdir -p sketch/esp32-cam sketch/esp32-s3-monitor
@@ -56,6 +63,8 @@ jobs:
           BOOT_APP0=$(find ~/.arduino15 -name boot_app0.bin | head -1)
           mkdir -p site/firmware
           cp docs/flasher/index.html site/index.html
+          cp docs/flasher/style.css  site/style.css
+          cp hardware/images/setup_real.jpg site/setup.jpg
           for b in cam s3; do
             mkdir -p site/firmware/$b
             cp out/$b/*.ino.bin            site/firmware/$b/app.bin
