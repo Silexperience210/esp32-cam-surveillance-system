@@ -691,7 +691,12 @@ void startScan() {
   int found = MDNS.queryService("esp32cam", "tcp");
   Serial.printf("mDNS : %d camera(s) detectee(s)\n", found);
   for (int i = 0; i < found && nbCams < MAX_CAMS; i++) {
+    // core ESP32 2.x : MDNS.IP(idx) / core 3.x : MDNS.address(idx)
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+    String ip = MDNS.address(i).toString();
+#else
     String ip = MDNS.IP(i).toString();
+#endif
     String name;
     if (!probeCam(ip, name, ADD_TIMEOUT_MS)) name = MDNS.hostname(i);
     cams[nbCams].ip = ip;
