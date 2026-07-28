@@ -20,6 +20,7 @@
 #include "time.h"
 #include <Preferences.h>
 #include <ESPmDNS.h>
+#include <lwip/sockets.h>   // setsockopt / TCP_NODELAY sur le socket du stream
 #include "avi_writer.h"
 
 // ================ CONFIGURATION : VIA LE PORTAIL WEB ================
@@ -45,6 +46,9 @@ const size_t MAX_UPLOAD_TELEGRAM = 18UL * 1024 * 1024;  // 18 Mo max envoi TG
 
 // Telegram
 const unsigned long TELEGRAM_POLL_MS = 3000;  // verification commandes /3 s
+// Le poll Telegram fait un handshake TLS bloquant (~300-800 ms de CPU) dans loop().
+// Pendant un stream ca provoque un hoquet visible : on espace fortement.
+const unsigned long TELEGRAM_POLL_STREAM_MS = 15000;
 
 // Watchdog anti-plantage (fonctionnement 24/7)
 const unsigned long WDT_LOOP_STALL_MS  = 60000;   // boucle figee > 60 s -> restart
@@ -587,35 +591,84 @@ static const char* STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" P
 static const char* STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
 static const char* STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
 
+// /stream?fs=qvga|cif|hvga|vga|svga  -> resolution du flux (defaut : inchangee)
+// /stream?q=10..30                   -> qualite JPEG du flux (defaut : 16)
+// Le buffer camera est alloue en SVGA a l'init : on ne peut que DESCENDRE.
+static framesize_t parseFramesize(const char* v) {
+  if (!strcmp(v, "qvga")) return FRAMESIZE_QVGA;   // 320x240
+  if (!strcmp(v, "cif"))  return FRAMESIZE_CIF;    // 400x296
+  if (!strcmp(v, "hvga")) return FRAMESIZE_HVGA;   // 480x320
+  if (!strcmp(v, "vga"))  return FRAMESIZE_VGA;    // 640x480
+  if (!strcmp(v, "svga")) return FRAMESIZE_SVGA;   // 800x600
+  return FRAMESIZE_INVALID;
+}
+
 static esp_err_t stream_handler(httpd_req_t* req) {
   camera_fb_t* fb = NULL;
   esp_err_t res = ESP_OK;
-  char part_buf[64];
+  char part_buf[128];
 
   res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
   if (res != ESP_OK) return res;
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-  streamClients++;
 
-  // Qualite JPEG reduite PENDANT le stream : frames ~40% plus legeres
-  // = flux plus fluide. Les photos /capture restent en qualite maximale.
+  // Nagle desactive : sans ca, chaque frame attend l'ACK precedent (~40 ms perdus).
+  int fd = httpd_req_to_sockfd(req);
+  if (fd >= 0) {
+    int one = 1;
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+  }
+
   sensor_t* s = esp_camera_sensor_get();
-  int oldQuality = -1;
-  if (s) { oldQuality = s->status.quality; s->set_quality(s, 16); }
+  int oldQuality  = -1;
+  framesize_t oldFs = FRAMESIZE_INVALID;
+  int quality = 16;   // frames ~40% plus legeres qu'en q12 ; /capture reste au max
+
+  char query[64];
+  framesize_t wantFs = FRAMESIZE_INVALID;
+  if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+    char val[12];
+    if (httpd_query_key_value(query, "fs", val, sizeof(val)) == ESP_OK)
+      wantFs = parseFramesize(val);
+    if (httpd_query_key_value(query, "q", val, sizeof(val)) == ESP_OK) {
+      int q = atoi(val);
+      if (q >= 10 && q <= 30) quality = q;
+    }
+  }
+
+  if (s) {
+    oldQuality = s->status.quality;
+    s->set_quality(s, quality);
+    // On ne touche pas a la resolution si une video AVI est en cours :
+    // ses dimensions sont figees dans l'entete du fichier.
+    if (wantFs != FRAMESIZE_INVALID && !recording && s->status.framesize != wantFs) {
+      oldFs = (framesize_t)s->status.framesize;
+      s->set_framesize(s, wantFs);
+      delay(120);   // laisse le capteur se resynchroniser
+    }
+  }
+
+  streamClients++;
 
   while (true) {
     fb = esp_camera_fb_get();
     if (!fb) { res = ESP_FAIL; break; }
     lastFrameOkMs = millis();
-    size_t hlen = snprintf(part_buf, sizeof(part_buf), STREAM_PART, fb->len);
+    // boundary + entete fusionnes : 2 ecritures TCP par frame au lieu de 3
+    size_t hlen = snprintf(part_buf, sizeof(part_buf),
+                           "%sContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
+                           STREAM_BOUNDARY, (unsigned)fb->len);
     res = httpd_resp_send_chunk(req, part_buf, hlen);
     if (res == ESP_OK) res = httpd_resp_send_chunk(req, (const char*)fb->buf, fb->len);
-    if (res == ESP_OK) res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
     esp_camera_fb_return(fb);
     if (res != ESP_OK) break;
   }
-  if (s && oldQuality >= 0) s->set_quality(s, oldQuality);
+
   streamClients--;
+  if (s) {
+    if (oldQuality >= 0) s->set_quality(s, oldQuality);
+    if (oldFs != FRAMESIZE_INVALID && !recording) s->set_framesize(s, oldFs);
+  }
   return res;
 }
 
@@ -768,6 +821,9 @@ void startCameraServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = 80;
   config.max_uri_handlers = 12;
+  config.stack_size    = 8192;   // le stream + SD ont besoin de marge
+  config.core_id       = 0;      // loop() tourne sur le core 1 : on ne se marche plus dessus
+  config.lru_purge_enable = true;
 
   httpd_handle_t server = NULL;
   httpd_uri_t index_uri   = { .uri = "/",        .method = HTTP_GET, .handler = index_handler,   .user_ctx = NULL };
@@ -926,7 +982,7 @@ bool initCamera() {
   if (psramFound()) {
     config.frame_size   = FRAMESIZE_SVGA;   // 800x600
     config.jpeg_quality = 12;
-    config.fb_count     = 2;
+    config.fb_count     = 3;   // 3 buffers = capture et envoi WiFi se recouvrent
     config.fb_location  = CAMERA_FB_IN_PSRAM;
     frameW = 800; frameH = 600;
   } else {
@@ -1104,7 +1160,8 @@ void loop() {
   }
 
   // ---------- commandes Telegram ----------
-  if (now - lastPollMs >= TELEGRAM_POLL_MS) {
+  unsigned long pollEvery = (streamClients > 0) ? TELEGRAM_POLL_STREAM_MS : TELEGRAM_POLL_MS;
+  if (now - lastPollMs >= pollEvery) {
     lastPollMs = now;
     telegramPoll();
   }

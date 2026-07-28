@@ -148,7 +148,12 @@ unsigned long addMessageMs = 0;
 bool pendingClear = false;
 unsigned long pendingClearMs = 0;
 
-const size_t JPG_BUF_SIZE = 220 * 1024;
+// Le framebuffer RGB du panneau vit deja en PSRAM et son DMA le relit en continu.
+// Garder jpgBuf en PSRAM ajoute 2 acces concurrents sur le meme bus -> decodage lent.
+// Une frame HVGA/VGA en q16 fait 15-45 ko : 96 ko de DRAM interne suffisent largement.
+const size_t JPG_BUF_SIZE      = 96 * 1024;    // tentative en DRAM interne
+const size_t JPG_BUF_SIZE_PSRAM = 220 * 1024;  // repli PSRAM si la DRAM est trop juste
+size_t jpgBufSize = 0;
 uint8_t* jpgBuf = nullptr;
 size_t jpgLen = 0;
 
@@ -343,10 +348,10 @@ bool fetchCapture(const String& ip) {
   WiFiClient* stream = http.getStreamPtr();
   size_t total = 0;
   unsigned long start = millis();
-  while (http.connected() && total < JPG_BUF_SIZE && millis() - start < 4000) {
+  while (http.connected() && total < jpgBufSize && millis() - start < 4000) {
     size_t avail = stream->available();
     if (avail) {
-      int r = stream->readBytes(jpgBuf + total, min(avail, JPG_BUF_SIZE - total));
+      int r = stream->readBytes(jpgBuf + total, min(avail, jpgBufSize - total));
       if (r > 0) total += r;
     } else delay(1);
   }
@@ -410,7 +415,7 @@ bool readOneFrame(WiFiClient* s) {
   }
   numBuf[ni] = 0;
   long len = atol(numBuf);
-  if (len <= 0 || len > (long)JPG_BUF_SIZE) return false;
+  if (len <= 0 || len > (long)jpgBufSize) return false;
   if (!findInStream(s, "\r\n\r\n", 1000)) return false;
   size_t got = 0;
   start = millis();
@@ -533,7 +538,8 @@ void drawGridFrame() {
 
 void drawFullJpg() {
   // image 400x272 a x=40 : les bandes x<40 et x>440 ne sont pas touchees
-  tft.drawJpg(jpgBuf, jpgLen, 40, 0, 400, 272, 0, 14, lgfx::jpeg_div::JPEG_DIV_2);
+  // Source = 480x320 (fs=hvga) : plus de division, on recadre au centre sur 400x272.
+  tft.drawJpg(jpgBuf, jpgLen, 40, 0, 400, 272, 40, 24, lgfx::jpeg_div::JPEG_DIV_NONE);
 }
 
 // ------- bouton LED (plein ecran, bande laterale gauche) -------
@@ -851,7 +857,8 @@ void gridTask() {
 
 void fullScreenTask() {
   HTTPClient http;
-  http.begin("http://" + cams[fullCamIndex].ip + "/stream");
+  // 480x320 : colle a la zone d'affichage -> 2,5x moins de WiFi et de decodage qu'en SVGA
+  http.begin("http://" + cams[fullCamIndex].ip + "/stream?fs=hvga&q=14");
   http.setTimeout(HTTP_TIMEOUT_MS);
   int code = http.GET();
   if (code != HTTP_CODE_OK) {
@@ -906,7 +913,16 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n=== Moniteur multi-cams v2 ===");
 
-  jpgBuf = (uint8_t*)heap_caps_malloc(JPG_BUF_SIZE, MALLOC_CAP_SPIRAM);
+  // DRAM interne en priorite : ~2x plus rapide a decoder que la PSRAM
+  jpgBuf = (uint8_t*)heap_caps_malloc(JPG_BUF_SIZE, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  jpgBufSize = JPG_BUF_SIZE;
+  if (!jpgBuf) {
+    Serial.println("DRAM interne insuffisante -> repli PSRAM");
+    jpgBuf = (uint8_t*)heap_caps_malloc(JPG_BUF_SIZE_PSRAM, MALLOC_CAP_SPIRAM);
+    jpgBufSize = JPG_BUF_SIZE_PSRAM;
+  } else {
+    Serial.printf("jpgBuf en DRAM interne (%u ko)\n", (unsigned)(JPG_BUF_SIZE / 1024));
+  }
   if (!jpgBuf) {
     Serial.println("ERREUR : PSRAM introuvable !");
     while (true) delay(1000);

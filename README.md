@@ -141,7 +141,7 @@ On first boot the monitor shows its own provisioning screen (`ESP32-Viewer-Setup
 | Endpoint | Description |
 |----------|-------------|
 | `GET /` | Web dashboard (live view + links) |
-| `GET /stream` | MJPEG live stream |
+| `GET /stream` | MJPEG live stream — `?fs=qvga/cif/hvga/vga/svga`, `?q=10..30` |
 | `GET /capture` | Single JPEG snapshot |
 | `GET /video` | Download last AVI recording |
 | `GET /list` | List/download all recordings |
