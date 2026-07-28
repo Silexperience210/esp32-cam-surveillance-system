@@ -1,0 +1,90 @@
+name: build
+
+on:
+  push:
+    branches: [main, 'perf/**', 'feat/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  ESP32_CORE: 3.1.3
+  CAM_FQBN: esp32:esp32:esp32cam
+  S3_FQBN: esp32:esp32:esp32s3:FlashSize=8M,PSRAM=opi,PartitionScheme=huge_app,CPUFreq=240,USBMode=hwcdc,CDCOnBoot=cdc
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 core + libraries
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls \
+            https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@${ESP32_CORE}
+          arduino-cli lib install LovyanGFX
+
+      # arduino-cli exige que le .ino principal porte le nom de son dossier.
+      # Ce n'est pas le cas dans le repo, on recopie donc dans un dossier conforme.
+      - name: Stage sketches
+        run: |
+          mkdir -p sketch/esp32-cam sketch/esp32-s3-monitor
+          cp firmware/esp32-cam/esp32-cam-surveillance.ino sketch/esp32-cam/esp32-cam.ino
+          cp firmware/esp32-cam/avi_writer.h             sketch/esp32-cam/
+          cp firmware/esp32-s3-monitor/esp32-viewer-s3.ino sketch/esp32-s3-monitor/esp32-s3-monitor.ino
+
+      - name: Compile ESP32-CAM
+        run: arduino-cli compile --fqbn "$CAM_FQBN" --output-dir out/cam --warnings default sketch/esp32-cam
+
+      - name: Compile ESP32-S3 monitor
+        run: arduino-cli compile --fqbn "$S3_FQBN" --output-dir out/s3 --warnings default sketch/esp32-s3-monitor
+
+      # On publie les parties separees plutot que le .merged.bin : ecrire l'image
+      # complete remettrait la NVS a zero et effacerait WiFi / token Telegram.
+      # Ici on ecrit bootloader + table + otadata + app, la NVS (0x9000) est intacte.
+      - name: Assemble flasher payload
+        run: |
+          BOOT_APP0=$(find ~/.arduino15 -name boot_app0.bin | head -1)
+          mkdir -p site/firmware
+          cp docs/flasher/index.html site/index.html
+          for b in cam s3; do
+            mkdir -p site/firmware/$b
+            cp out/$b/*.ino.bin            site/firmware/$b/app.bin
+            cp out/$b/*.ino.bootloader.bin site/firmware/$b/bootloader.bin
+            cp out/$b/*.ino.partitions.bin site/firmware/$b/partitions.bin
+            cp "$BOOT_APP0"                site/firmware/$b/boot_app0.bin
+          done
+          # bootloader : 0x1000 sur ESP32 classique, 0x0 sur ESP32-S3
+          cp docs/flasher/manifest-cam.json site/firmware/cam/manifest.json
+          cp docs/flasher/manifest-s3.json  site/firmware/s3/manifest.json
+          ls -lR site/firmware
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: site/firmware
+
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

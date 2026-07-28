@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESP32-CAM Surveillance — Web Flasher</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10.0.3/dist/web/install-button.js"></script>
+<style>
+  :root{
+    --bg:#07080a; --panel:#101317; --line:#23282f;
+    --orange:#ff7a18; --red:#e2231a; --dim:#8b949e; --fg:#e8eaed;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:15px/1.6 ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    padding:28px 18px 60px; max-width:720px; margin-inline:auto;
+  }
+  h1{
+    font-size:1.5rem; margin:0 0 4px; letter-spacing:-.5px;
+    background:linear-gradient(90deg,var(--orange),var(--red));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .sub{color:var(--dim); font-size:.85rem; margin-bottom:28px}
+  .card{
+    background:var(--panel); border:1px solid var(--line);
+    border-left:3px solid var(--orange); border-radius:8px;
+    padding:18px 20px; margin-bottom:16px;
+  }
+  .card.s3{border-left-color:var(--red)}
+  .card h2{font-size:1rem; margin:0 0 2px; letter-spacing:.5px}
+  .card p{margin:0 0 14px; color:var(--dim); font-size:.82rem}
+  esp-web-install-button{--esp-tools-button-color:#07080a}
+  esp-web-install-button::part(button){
+    background:linear-gradient(90deg,var(--orange),var(--red));
+    color:#07080a; border:0; border-radius:6px; cursor:pointer;
+    font:700 .85rem/1 ui-monospace,monospace; letter-spacing:.5px;
+    padding:12px 22px;
+  }
+  .unsupported,.not-allowed{color:var(--red); font-size:.8rem}
+  ol{padding-left:20px; color:var(--dim); font-size:.82rem; margin:10px 0 0}
+  ol li{margin-bottom:6px}
+  code{color:var(--orange); font-size:.95em}
+  .note{
+    border:1px solid var(--line); border-left:3px solid var(--dim);
+    background:#0c0e11; border-radius:8px; padding:14px 18px;
+    color:var(--dim); font-size:.8rem; margin-top:26px;
+  }
+  .note b{color:var(--fg)}
+  a{color:var(--orange)}
+</style>
+</head>
+<body>
+
+<h1>ESP32-CAM Surveillance</h1>
+<div class="sub">Flash direct depuis le navigateur — Chrome / Edge desktop, ou Chrome Android + câble OTG.</div>
+
+<div class="card">
+  <h2>📷 Caméra ESP32-CAM</h2>
+  <p>AI-Thinker / Binghe + OV3660</p>
+  <esp-web-install-button manifest="firmware/cam/manifest.json">
+    <button slot="activate">Flasher la caméra</button>
+    <span slot="unsupported" class="unsupported">Navigateur non supporté — utilise Chrome ou Edge.</span>
+    <span slot="not-allowed" class="not-allowed">HTTPS requis.</span>
+  </esp-web-install-button>
+  <ol>
+    <li>Branche la carte sur son adaptateur <b>ESP32-CAM-MB</b> (ou un FTDI).</li>
+    <li>Maintiens <code>BOOT</code> (ou relie <code>GPIO 0</code> à <code>GND</code>) pendant le branchement.</li>
+    <li>Lance le flash, puis relâche et appuie sur <code>RESET</code>.</li>
+  </ol>
+</div>
+
+<div class="card s3">
+  <h2>📺 Moniteur ESP32-S3</h2>
+  <p>Guition 4827S043 — 4,3″ 480×272 tactile</p>
+  <esp-web-install-button manifest="firmware/s3/manifest.json">
+    <button slot="activate">Flasher le moniteur</button>
+    <span slot="unsupported" class="unsupported">Navigateur non supporté — utilise Chrome ou Edge.</span>
+    <span slot="not-allowed" class="not-allowed">HTTPS requis.</span>
+  </esp-web-install-button>
+  <ol>
+    <li>USB-C natif : branche simplement la carte.</li>
+    <li>Si elle n'apparaît pas, maintiens <code>BOOT</code> puis appuie brièvement sur <code>RESET</code>.</li>
+  </ol>
+</div>
+
+<div class="note">
+  <b>Ta configuration est préservée.</b> Le flasher n'écrit que le bootloader, la table de
+  partitions, l'otadata et l'application. La partition <code>NVS</code> (0x9000), qui contient le
+  WiFi, le token Telegram et le nom de la caméra, n'est pas touchée — inutile de repasser par le
+  portail après un flash.<br><br>
+  Si tu choisis <b>Erase device</b> dans la boîte de dialogue, en revanche, tout est effacé et la
+  carte redémarre sur son point d'accès <code>ESP32-CAM-Setup-xxxx</code>.
+</div>
+
+</body>
+</html>
