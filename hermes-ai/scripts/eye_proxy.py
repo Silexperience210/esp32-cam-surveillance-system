@@ -31,6 +31,10 @@ def proxy(url, timeout=15):
 @app.route("/")
 def mini_app(): return send_from_directory(DASHBOARD_DIR, "eye_telegram.html")
 
+@app.route("/manifest.json")
+def manifest():
+    return send_from_directory(DASHBOARD_DIR, "manifest.json")
+
 @app.route("/dashboard")
 def dashboard(): return send_from_directory(DASHBOARD_DIR, "ai_dashboard.html")
 
