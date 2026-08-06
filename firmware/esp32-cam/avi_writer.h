@@ -2,6 +2,8 @@
  * AVIWriter : enregistreur video AVI (MJPEG) minimaliste pour ESP32-CAM.
  * Les frames JPEG de la camera sont ecrites telles quelles sur la carte SD.
  * Compatible VLC, lecteurs Windows, Telegram (en piece jointe).
+ * 
+ * v3 : patch des fps reels mesures pour eviter la video acceleree
  */
 #ifndef AVI_WRITER_H
 #define AVI_WRITER_H
@@ -34,7 +36,8 @@ public:
     // avih (56 octets)
     _f.write((const uint8_t*)"avih", 4);
     w32(56);
-    w32(1000000UL / fps);         // microsec par frame
+    _avihPos = _f.position();     // <- position pour patcher les fps reels
+    w32(1000000UL / fps);         // microsec par frame (patche plus tard)
     w32(0);                       // max bytes/sec
     w32(0);                       // padding
     w32(0x10);                    // flags : HASINDEX
@@ -61,7 +64,8 @@ public:
     w32(0);                       // priority + language
     w32(0);                       // initial frames
     w32(1);                       // scale
-    w32(fps);                     // rate
+    _strhRatePos = _f.position(); // <- position pour patcher le rate reel
+    w32(fps);                     // rate (patche plus tard)
     w32(0);                       // start
     _strhLengthPos = _f.position();
     w32(0);                       // length en frames (patche a la fin)
@@ -104,7 +108,7 @@ public:
     return true;
   }
 
-  uint32_t end() {
+  uint32_t end(uint32_t realDurationMs = 0) {
     uint32_t idxPos = _f.position();
 
     // ---- idx1 ----
@@ -127,6 +131,19 @@ public:
     w32(_frames);
     _f.seek(_strhLengthPos);
     w32(_frames);
+
+    // Patch fps reels si duree mesuree disponible
+    if (realDurationMs > 0 && _frames > 1) {
+      uint32_t usPerFrame = realDurationMs * 1000UL / (_frames - 1);
+      if (usPerFrame < 1000) usPerFrame = 1000;  // max 1000 fps
+      uint32_t realFps = 1000000UL / usPerFrame;
+      if (realFps < 1) realFps = 1;
+      _f.seek(_avihPos);
+      w32(usPerFrame);
+      _f.seek(_strhRatePos);
+      w32(realFps);
+    }
+
     _f.seek(endPos);
     _f.flush();
 
@@ -144,7 +161,9 @@ private:
   File _f;
   uint8_t _fps = 10;
   uint16_t _frames = 0, _maxFrames = 0, _width = 0, _height = 0;
-  uint32_t _moviSizePos = 0, _dataStart = 0, _avihFramesPos = 0, _strhLengthPos = 0;
+  uint32_t _moviSizePos = 0, _dataStart = 0;
+  uint32_t _avihPos = 0, _avihFramesPos = 0;
+  uint32_t _strhRatePos = 0, _strhLengthPos = 0;
   uint32_t* _offsets = nullptr;
   uint32_t* _sizes = nullptr;
 };

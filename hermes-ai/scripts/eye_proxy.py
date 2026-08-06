@@ -164,7 +164,7 @@ def ai_gallery():
 
 @app.route("/snapshots/<path:filename>")
 def serve_snapshot(filename):
-    return send_file(str(BASE_DIR / "snapshots" / filename))
+    return send_from_directory(str(BASE_DIR / "snapshots"), filename)
 
 # --- Cameras config ---
 @app.route("/api/cameras")

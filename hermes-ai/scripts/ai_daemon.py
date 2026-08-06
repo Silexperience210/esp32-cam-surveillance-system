@@ -40,7 +40,9 @@ def telegram_send(text: str):
                 if line.startswith("TELEGRAM_CHAT_ID="):
                     chat_id = line.split("=",1)[1].strip().strip('"').strip("'")
         if not chat_id:
-            chat_id = "540124594"  # fallback
+            chat_id = os.getenv("TELEGRAM_CHAT_ID")
+if not chat_id:
+    raise ValueError("TELEGRAM_CHAT_ID manquant dans .env")
         if token and chat_id:
             data = json.dumps({"chat_id": chat_id, "text": text}).encode()
             req = urllib.request.Request(

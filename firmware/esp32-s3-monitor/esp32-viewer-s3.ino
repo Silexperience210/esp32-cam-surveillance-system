@@ -148,7 +148,7 @@ unsigned long addMessageMs = 0;
 bool pendingClear = false;
 unsigned long pendingClearMs = 0;
 
-const size_t JPG_BUF_SIZE = 220 * 1024;
+const size_t JPG_BUF_SIZE = 512 * 1024;  // FIX : UXGA q=6 = 250-450 Ko
 uint8_t* jpgBuf = nullptr;
 size_t jpgLen = 0;
 
@@ -269,7 +269,8 @@ static esp_err_t save_handler(httpd_req_t* req) {
   int len = min((int)sizeof(buf) - 1, (int)req->content_len);
   int ret = httpd_req_recv(req, buf, len);
   if (ret <= 0) { httpd_resp_send_500(req); return ESP_FAIL; }
-  buf[ret] = 0;
+  if (ret >= (int)sizeof(buf)) ret = (int)sizeof(buf) - 1;  // FIX overflow
+  buf[ret] = '\0';
   String body = buf;
   String s = postParam(body, "ssid");
   if (s.length()) cfgSsid = s;
@@ -338,21 +339,26 @@ bool fetchCapture(const String& ip) {
   HTTPClient http;
   http.begin("http://" + ip + "/capture");
   http.setTimeout(HTTP_TIMEOUT_MS);
+  http.setReuse(false);
   int code = http.GET();
   if (code != HTTP_CODE_OK) { http.end(); return false; }
+
+  int size = http.getSize();  // FIX : utilise Content-Length au lieu de timeout
+  if (size <= 0 || (size_t)size > JPG_BUF_SIZE) { http.end(); return false; }
+
   WiFiClient* stream = http.getStreamPtr();
   size_t total = 0;
   unsigned long start = millis();
-  while (http.connected() && total < JPG_BUF_SIZE && millis() - start < 4000) {
-    size_t avail = stream->available();
-    if (avail) {
-      int r = stream->readBytes(jpgBuf + total, min(avail, JPG_BUF_SIZE - total));
+  while (total < (size_t)size && millis() - start < 3000) {
+    int avail = stream->available();
+    if (avail > 0) {
+      int r = stream->readBytes(jpgBuf + total, min((size_t)avail, (size_t)size - total));
       if (r > 0) total += r;
     } else delay(1);
   }
   http.end();
   jpgLen = total;
-  return (total > 2000 && jpgBuf[0] == 0xFF && jpgBuf[1] == 0xD8);
+  return (total == (size_t)size && jpgBuf[0] == 0xFF && jpgBuf[1] == 0xD8);
 }
 
 // Interroge /info d'une IP : true si c'est une ESP32-CAM (recupere son nom)
@@ -505,7 +511,7 @@ void drawTileJpg(int idx) {
   tft.setClipRect(x, y, w, h);
   int jx = x + (w - 200) / 2;
   int jy = y + (h - 150) / 2;
-  tft.drawJpg(jpgBuf, jpgLen, jx, jy, 200, 150, 0, 0, lgfx::jpeg_div::JPEG_DIV_4);
+  tft.drawJpg(jpgBuf, jpgLen, jx, jy, 200, 150, 0, 0, lgfx::jpeg_div::JPEG_DIV_8);  // FIX : UXGA/8 = 200x150 exact
   tft.clearClipRect();
   drawTileLabel(idx);
 }
@@ -533,7 +539,7 @@ void drawGridFrame() {
 
 void drawFullJpg() {
   // image 400x272 a x=40 : les bandes x<40 et x>440 ne sont pas touchees
-  tft.drawJpg(jpgBuf, jpgLen, 40, 0, 400, 272, 0, 14, lgfx::jpeg_div::JPEG_DIV_2);
+  tft.drawJpg(jpgBuf, jpgLen, 40, 0, 400, 272, 0, 14, lgfx::jpeg_div::JPEG_DIV_4);  // FIX : UXGA/4 = 400x300, offY=14 centre
 }
 
 // ------- bouton LED (plein ecran, bande laterale gauche) -------
@@ -677,7 +683,8 @@ void updateTile(int idx) {
 
 void startScan() {
   viewMode = MODE_SCAN;
-  nbCams = 0;
+  Cam found[MAX_CAMS];
+  int nbFound = 0;
   bool cancelled = false;
 
   // 1) Decouverte mDNS (instantane) : les cameras a jour s'annoncent
@@ -688,14 +695,16 @@ void startScan() {
     String ip = MDNS.IP(i).toString();
     String name;
     if (!probeCam(ip, name, ADD_TIMEOUT_MS)) name = MDNS.hostname(i);
-    cams[nbCams].ip = ip;
-    cams[nbCams].name = name;
-    nbCams++;
+    found[nbFound].ip = ip;
+    found[nbFound].name = name;
+    nbFound++;
     Serial.printf("  -> %s (%s)\n", name.c_str(), ip.c_str());
   }
 
   // 2) Fallback : scan IP complet si aucune camera mDNS trouvee
-  if (nbCams > 0) {
+  if (nbFound > 0 && !cancelled) {
+    for (int i = 0; i < nbFound; i++) cams[i] = found[i];
+    nbCams = nbFound;
     saveCams();
     for (int i = 0; i < 4; i++) camOnline[i] = false;
     gridCursor = 0;
@@ -962,7 +971,24 @@ void setup() {
 }
 
 void loop() {
-  if (configMode) { delay(100); return; }
+  if (configMode) {
+    // FIX : retry WiFi toutes les 2 min (meme bug que la camera)
+    static unsigned long lastTry = 0;
+    if (cfgSsid.length() > 0 && millis() - lastTry > 120000) {
+      lastTry = millis();
+      Serial.println("Portail actif : nouvelle tentative WiFi...");
+      WiFi.begin(cfgSsid.c_str(), cfgPass.c_str());
+      unsigned long t0 = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - t0 < 12000) delay(200);
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("WiFi retrouve -> redemarrage en mode normal");
+        delay(500);
+        ESP.restart();
+      }
+    }
+    delay(100);
+    return;
+  }
 
   // reconnexion WiFi automatique
   static unsigned long lastWifiRetry = 0;
