@@ -191,4 +191,7 @@ def api_stream():
                     yield chunk
         except: pass
     return Response(generate(), content_type="multipart/x-mixed-replace; boundary=123456789000000000000987654321")
+
+
+if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8084, debug=False)
