@@ -51,8 +51,9 @@ h1{color:var(--accent);font-size:1.2rem;margin-bottom:16px}
     <div class="stat-row"><span>GPU</span><span class="val" id="gpu-info">—</span></div>
     <div class="stat-row"><span>Snapshots</span><span class="val" id="snap-count">0</span></div>
     <div class="btn-row">
-      <button class="btn active" onclick="toggleAI()" id="btn-ai">⏯️ AI ON/OFF</button>
+      <button class="btn active" onclick="toggleAI()" id="btn-ai">⏯️ AI</button>
       <button class="btn" onclick="forceAnalyze()">🔍 Analyser</button>
+      <button class="btn" onclick="liveView('Atelier')" id="btn-live">🔴 Live</button>
     </div>
   </div>
   <div class="card">
@@ -192,6 +193,27 @@ async function loadCameras() {
   } catch(e) {}
 }
 loadCameras();
+
+// Live modal
+function liveView(name) {
+  let modal = document.getElementById('live-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'live-modal';
+    modal.innerHTML = `
+      <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center"
+           onclick="this.parentElement.remove()">
+        <img src="http://192.168.1.178:81/stream" style="max-width:95vw;max-height:90vh;border-radius:8px" 
+             onclick="event.stopPropagation()">
+        <button onclick="this.parentElement.parentElement.remove()" 
+                style="position:absolute;top:16px;right:16px;background:#e74c3c;color:#fff;border:0;padding:8px 16px;border-radius:6px;font-size:1rem;cursor:pointer">✕ Fermer</button>
+        <div style="position:absolute;bottom:16px;color:#ccc;font-family:monospace;font-size:0.8rem">🔴 Live — ${name} — 192.168.1.178:81</div>
+      </div>`;
+    document.body.appendChild(modal);
+  } else {
+    modal.remove();
+  }
+}
 </script>
 </body>
 </html>
