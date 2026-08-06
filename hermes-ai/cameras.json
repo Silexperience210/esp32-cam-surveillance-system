@@ -1,0 +1,11 @@
+{
+  "cameras": [
+    {
+      "name": "Arriere Cam",
+      "url": "http://192.168.1.178",
+      "enabled": true,
+      "interval": 15
+    }
+  ],
+  "default_interval": 15
+}

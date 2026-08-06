@@ -169,6 +169,14 @@ def ai_heatmap():
                 except: pass
     return {"points": points, "image_size": [1600, 1200]}
 
+@app.route("/api/cameras")
+def api_cameras():
+    """Liste des cameras configurees."""
+    cf = BASE_DIR / "cameras.json"
+    if cf.exists():
+        with open(cf) as f: return json.load(f)
+    return {"cameras": [{"name": "Camera", "url": CAMERA}]}
+
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8084, debug=False)

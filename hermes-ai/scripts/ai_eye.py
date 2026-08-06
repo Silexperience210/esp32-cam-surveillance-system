@@ -16,7 +16,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 # ─── CONFIG ────────────────────────────────────────────
-CAMERA_URL = "http://192.168.1.178"
+CAMERA_URL = os.environ.get("CAMERA_URL", "http://192.168.1.178")  # override via env
+CAMERAS_CONFIG = BASE_DIR / "cameras.json"
 BASE_DIR = Path.home() / ".hermes" / "camera"
 SNAPSHOT_DIR = BASE_DIR / "snapshots"
 DIFF_DIR = BASE_DIR / "diffs"
