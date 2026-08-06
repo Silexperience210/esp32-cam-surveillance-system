@@ -813,7 +813,13 @@ static esp_err_t led_handler(httpd_req_t* req) {
 
 static esp_err_t capture_handler(httpd_req_t* req) {
   if (!checkAuth(req)) return ESP_FAIL;
-  camera_fb_t* fb = camGet();
+  camera_fb_t* fb = NULL;
+  // Retry: le stream peut garder le mutex
+  for (int retry = 0; retry < 10; retry++) {
+    fb = camGet(500);
+    if (fb) break;
+    delay(50);
+  }
   if (!fb) { httpd_resp_send_500(req); return ESP_FAIL; }
   httpd_resp_set_type(req, "image/jpeg");
   httpd_resp_set_hdr(req, "Content-Disposition", "inline; filename=capture.jpg");
