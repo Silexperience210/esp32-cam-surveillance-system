@@ -158,8 +158,9 @@ def ai_gallery():
                     if "person" not in str(e.get("detections","")).lower(): continue
                     img = e.get("image","")
                     if img and os.path.exists(img):
+                        fname = os.path.basename(img)
                         items.append({"time": e.get("timestamp",""), "desc": e.get("description_full","")[:150],
-                                     "count": e.get("count",0), "image": img.replace(str(HOME), ""),
+                                     "count": e.get("count",0), "image": f"/snapshots/{fname}",
                                      "alert": e.get("alert",False)})
                     if len(items) >= limit: break
                 except: pass
