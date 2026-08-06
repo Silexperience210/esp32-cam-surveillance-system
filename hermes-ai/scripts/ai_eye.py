@@ -211,10 +211,23 @@ def should_alert(detections: list) -> tuple:
 
 def ollama_describe(image_path: str) -> str:
     """Description via Ollama + LLaVA. Necessite ollama et llava-llama3."""
+    now = datetime.now()
+    hour = now.hour
+    moment = "la nuit (il fait noir dehors)" if hour < 7 or hour >= 21 else (
+        "le matin" if hour < 12 else ("l'apres-midi" if hour < 17 else "le soir (la luminosite baisse)"))
+
+    prompt = (
+        f"Decris cette image de camera de surveillance en une phrase en francais. "
+        f"Il est {now.strftime('%Hh%M')}, nous sommes {moment}. "
+        f"Important: si l'image est sombre, ne dis pas juste \"c'est sombre\" — "
+        f"dis si les lumieres semblent eteintes, ou si c'est la lumiere du jour qui manque. "
+        f"Decris: qui ou quoi est visible, combien de personnes, que font-ils, "
+        f"quelle est la source de lumiere, et l'ambiance generale. "
+        f"Sois concis (1 phrase). Image: {image_path}"
+    )
     try:
         r = subprocess.run(
-            ["ollama", "run", "llava-llama3:8b",
-             f"Decris cette image en une phrase en francais. Sois precis: que vois-tu, ou, combien de personnes, quelle lumiere, quelle ambiance? Image: {image_path}"],
+            ["ollama", "run", "llava-llama3:8b", prompt],
             capture_output=True, text=True, timeout=30
         )
         if r.returncode == 0 and r.stdout.strip():
