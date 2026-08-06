@@ -597,11 +597,11 @@ static esp_err_t stream_handler(httpd_req_t* req) {
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   streamClients++;
 
-  // Qualite JPEG reduite PENDANT le stream : frames ~40% plus legeres
-  // = flux plus fluide. Les photos /capture restent en qualite maximale.
+  // Qualite JPEG reduite PENDANT le stream pour fluidite.
+  // Photos /capture restent en qualite maximale (jpeg_quality=6).
   sensor_t* s = esp_camera_sensor_get();
   int oldQuality = -1;
-  if (s) { oldQuality = s->status.quality; s->set_quality(s, 16); }
+  if (s) { oldQuality = s->status.quality; s->set_quality(s, 10); }
 
   while (true) {
     fb = esp_camera_fb_get();
@@ -919,28 +919,54 @@ bool initCamera() {
   config.pin_sccb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn  = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
+  config.xclk_freq_hz = 16000000;   // 16MHz - stable, moins de bruit que 20MHz
   config.pixel_format = PIXFORMAT_JPEG;
   config.grab_mode    = CAMERA_GRAB_LATEST;
 
   if (psramFound()) {
-    config.frame_size   = FRAMESIZE_SVGA;   // 800x600
-    config.jpeg_quality = 12;
+    // Qualité maximale : UXGA 1600×1200, JPEG haute qualité
+    config.frame_size   = FRAMESIZE_UXGA;   // 1600x1200
+    config.jpeg_quality = 6;                // 0-63, plus bas = meilleure qualité (6 = excellent)
     config.fb_count     = 2;
     config.fb_location  = CAMERA_FB_IN_PSRAM;
-    frameW = 800; frameH = 600;
+    frameW = 1600; frameH = 1200;
   } else {
-    config.frame_size   = FRAMESIZE_VGA;    // 640x480
-    config.jpeg_quality = 15;
+    config.frame_size   = FRAMESIZE_SVGA;   // 800x600 (fallback sans PSRAM)
+    config.jpeg_quality = 8;
     config.fb_count     = 1;
-    frameW = 640; frameH = 480;
+    frameW = 800; frameH = 600;
   }
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("ERREUR init camera : 0x%x\n", err);
+    Serial.printf("ERREUR init camera : 0x%x\\n", err);
     return false;
   }
+
+  // Réglages capteur pour qualité maximale
+  sensor_t* s = esp_camera_sensor_get();
+  if (s) {
+    s->set_sharpness(s, 2);          // +2 netteté max (-2 à +2)
+    s->set_brightness(s, 1);         // +1 luminosité (-2 à +2)
+    s->set_contrast(s, 1);           // +1 contraste (-2 à +2)
+    s->set_saturation(s, 1);         // +1 saturation (-2 à +2)
+    s->set_special_effect(s, 0);     // 0 = aucun effet
+    s->set_wb_mode(s, 0);            // 0 = balance des blancs auto
+    s->set_whitebal(s, 1);           // active AWB
+    s->set_awb_gain(s, 1);           // active gain AWB
+    s->set_exposure_ctrl(s, 1);      // active contrôle exposition auto
+    s->set_aec2(s, 1);               // active AEC2 (meilleure exposition)
+    s->set_gain_ctrl(s, 1);          // active gain auto
+    s->set_agc_gain(s, 0);           // gain AGC manuel à 0 (moins de bruit)
+    s->set_gainceiling(s, (gainceiling_t)2); // plafond gain = 4x (moins de bruit)
+    s->set_lenc(s, 1);               // correction lentille ON
+    s->set_hmirror(s, 0);            // pas de miroir horizontal
+    s->set_vflip(s, 0);              // pas de flip vertical
+    s->set_dcw(s, 0);                // pas de downscale
+    s->set_raw_gma(s, 1);            // gamma activé
+    Serial.println("Capteur regle : UXGA 1600x1200, JPEG q=6, netteté+2");
+  }
+
   return true;
 }
 

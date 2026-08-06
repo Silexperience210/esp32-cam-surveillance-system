@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>👁️ Œil d'Hermes — ESP32-CAM</title>
+<style>
+  :root{--bg:#0a0a0a;--panel:#111;--border:#222;--accent:#F7931A;--text:#ddd;--dim:#777;--green:#2ecc71;--red:#e74c3c}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+  .container{max-width:1200px;margin:0 auto;padding:16px}
+  h1{font-size:1.5rem;color:var(--accent);margin-bottom:16px;display:flex;align-items:center;gap:10px}
+  .grid{display:grid;grid-template-columns:1fr 320px;gap:16px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .stream-panel{background:var(--panel);border-radius:12px;overflow:hidden;border:1px solid var(--border)}
+  .stream-panel img{width:100%;display:block}
+  .stream-panel .label{padding:8px 12px;font-size:0.8rem;color:var(--dim);display:flex;justify-content:space-between}
+  .side-panel{display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--panel);border-radius:10px;padding:14px;border:1px solid var(--border)}
+  .card h3{font-size:0.9rem;color:var(--dim);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em}
+  .stat{display:flex;justify-content:space-between;padding:4px 0;font-size:0.85rem;border-bottom:1px solid rgba(255,255,255,0.03)}
+  .stat .val{color:var(--accent);font-weight:600}
+  .online{color:var(--green)}.offline{color:var(--red)}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+  .dot.online{background:var(--green);box-shadow:0 0 6px var(--green)}
+  .dot.offline{background:var(--red);box-shadow:0 0 6px var(--red)}
+  .btn{display:block;width:100%;padding:10px;margin:6px 0;background:var(--accent);color:#000;border:0;border-radius:8px;font-weight:bold;cursor:pointer;font-size:0.9rem}
+  .btn:hover{filter:brightness(1.2)}
+  .btn-sm{font-size:0.8rem;padding:6px 12px;background:var(--border);color:var(--text)}
+  .snap-thumb{width:60px;height:45px;object-fit:cover;border-radius:4px;cursor:pointer;border:1px solid var(--border)}
+  .snap-thumb:hover{border-color:var(--accent)}
+  #snapshots{display:flex;flex-wrap:wrap;gap:4px;max-height:100px;overflow-y:auto}
+  #motion-log{font-size:0.75rem;color:var(--dim);max-height:100px;overflow-y:auto}
+  #motion-log div{padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.02)}
+  .badge{font-size:0.7rem;padding:3px 6px;border-radius:4px;font-weight:600}
+  .badge.motion{background:#e74c3c22;color:var(--red)}
+  .badge.still{background:#2ecc7122;color:var(--green)}
+  .loading{animation:pulse 1.5s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>👁️ Œil d'Hermes <span style="font-size:0.8rem;color:var(--dim);font-weight:normal">ESP32-CAM OV3660 · 1600×1200</span></h1>
+  <div class="grid">
+    <div class="stream-panel">
+      <img id="stream" src="http://192.168.1.178/stream" alt="Live stream" onerror="this.style.display='none';document.getElementById('offline-msg').style.display='block'">
+      <div id="offline-msg" style="display:none;padding:60px;text-align:center;color:var(--red)">📡 Caméra hors ligne</div>
+      <div class="label">
+        <span id="fps">Live · MJPEG</span>
+        <span id="motion-indicator"></span>
+      </div>
+    </div>
+    <div class="side-panel">
+      <div class="card">
+        <h3>📊 Statut</h3>
+        <div class="stat"><span>Statut</span><span id="status-dot" class="val">⏳</span></div>
+        <div class="stat"><span>IP</span><span class="val" id="ip">—</span></div>
+        <div class="stat"><span>Nom</span><span class="val" id="name">—</span></div>
+        <div class="stat"><span>SD Card</span><span class="val" id="sd">—</span></div>
+        <div class="stat"><span>Snapshots</span><span class="val" id="snap-count">—</span></div>
+      </div>
+      <div class="card">
+        <h3>🎮 Contrôles</h3>
+        <button class="btn" onclick="snapshot()">📸 Prendre une photo</button>
+        <button class="btn btn-sm" onclick="toggleMotion()" id="motion-btn">🔍 Détection mouvement: OFF</button>
+        <button class="btn btn-sm" onclick="toggleLed()">💡 LED on/off</button>
+      </div>
+      <div class="card">
+        <h3>📸 Derniers snapshots</h3>
+        <div id="snapshots">—</div>
+      </div>
+      <div class="card">
+        <h3>📋 Activité</h3>
+        <div id="motion-log">En attente...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CAM = 'http://192.168.1.178';
+let motionCheckActive = false;
+let motionInterval = null;
+
+async function refreshStatus() {
+  try {
+    const r = await fetch(CAM+'/info');
+    const d = await r.json();
+    document.getElementById('ip').textContent = d.ip||'—';
+    document.getElementById('name').textContent = d.name||'—';
+    document.getElementById('sd').textContent = d.sd==='true'?'✅':'❌';
+    document.getElementById('status-dot').innerHTML = '<span class="dot online"></span> ONLINE';
+    document.getElementById('status-dot').className = 'val online';
+  } catch(e) {
+    document.getElementById('status-dot').innerHTML = '<span class="dot offline"></span> OFFLINE';
+    document.getElementById('status-dot').className = 'val offline';
+    document.getElementById('ip').textContent = '—';
+  }
+}
+
+async function snapshot() {
+  const ts = new Date().toLocaleTimeString();
+  const log = document.getElementById('motion-log');
+  log.innerHTML = '<div>📸 Snapshot manuel '+ts+'</div>' + log.innerHTML;
+  try {
+    const r = await fetch(CAM+'/capture');
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const img = document.createElement('img');
+    img.src = url; img.className = 'snap-thumb';
+    img.onclick = () => window.open(url);
+    const container = document.getElementById('snapshots');
+    container.prepend(img);
+    if (container.children.length > 10) container.lastChild.remove();
+    // Refresh snapshot count
+    document.getElementById('snap-count').textContent = container.children.length;
+  } catch(e) {
+    log.innerHTML = '<div style="color:var(--red)">❌ Snapshot échoué</div>' + log.innerHTML;
+  }
+}
+
+async function toggleMotion() {
+  motionCheckActive = !motionCheckActive;
+  const btn = document.getElementById('motion-btn');
+  const log = document.getElementById('motion-log');
+  if (motionCheckActive) {
+    btn.textContent = '🔍 Détection mouvement: ON';
+    btn.style.background = 'var(--red)';
+    log.innerHTML = '<div>🔍 Détection de mouvement activée</div>' + log.innerHTML;
+    motionInterval = setInterval(checkMotion, 3000);
+  } else {
+    btn.textContent = '🔍 Détection mouvement: OFF';
+    btn.style.background = 'var(--border)';
+    clearInterval(motionInterval);
+    log.innerHTML = '<div>🔍 Détection de mouvement désactivée</div>' + log.innerHTML;
+  }
+}
+
+async function checkMotion() {
+  try {
+    const r1 = await fetch(CAM+'/capture?ts='+Date.now());
+    const b1 = await r1.blob();
+    await new Promise(r => setTimeout(r,800));
+    const r2 = await fetch(CAM+'/capture?ts='+Date.now()+1);
+    const b2 = await r2.blob();
+    // Simple size-based comparison
+    const diff = Math.abs(b1.size - b2.size) / Math.max(b1.size, b2.size);
+    const motion = diff > 0.08; // 8% size difference = motion
+    const indicator = document.getElementById('motion-indicator');
+    const ts = new Date().toLocaleTimeString();
+    const log = document.getElementById('motion-log');
+    if (motion) {
+      indicator.innerHTML = '<span class="badge motion">🔴 MOUVEMENT</span>';
+      log.innerHTML = '<div><span class="badge motion">MOUVEMENT</span> '+ts+' (Δ'+Math.round(diff*100)+'%)</div>' + log.innerHTML;
+    } else {
+      indicator.innerHTML = '<span class="badge still">⚫ statique</span>';
+    }
+  } catch(e) {}
+}
+
+async function toggleLed() {
+  try {
+    await fetch(CAM+'/led?state=toggle');
+    const log = document.getElementById('motion-log');
+    log.innerHTML = '<div>💡 LED togglée</div>' + log.innerHTML;
+  } catch(e) {}
+}
+
+// Init
+refreshStatus();
+setInterval(refreshStatus, 10000);
+document.getElementById('snap-count').textContent = '...';
+</script>
+</body>
+</html>

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Oeil Hermes</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0a0a;color:#ddd;min-height:100vh;display:flex;flex-direction:column}
+  .header{padding:12px 16px;background:#111;display:flex;align-items:center;justify-content:space-between}
+  .header h1{font-size:1rem;color:#F7931A}
+  .status{font-size:0.7rem;padding:3px 8px;border-radius:10px}
+  .status.ok{background:#2ecc7122;color:#2ecc71}
+  .status.err{background:#e74c3c22;color:#e74c3c}
+  .view{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;min-height:0}
+  .view img{max-width:100%;max-height:65vh;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.5);display:block}
+  .view .msg{color:#666;text-align:center}
+  .bar{display:flex;gap:8px;padding:10px 14px;background:#111;border-top:1px solid #222}
+  .bar button{flex:1;padding:12px 8px;border:0;border-radius:10px;font-weight:600;font-size:0.8rem;cursor:pointer;color:#fff;background:#333}
+  .bar button.primary{background:#F7931A;color:#000}
+  .bar button.led-on{background:#f39c12}
+  #ts{font-size:0.6rem;color:#555;text-align:center;padding:4px 0 6px}
+  .loading{opacity:.6}
+  .spinner{display:inline-block;width:30px;height:30px;border:3px solid #333;border-top:3px solid #F7931A;border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>👁️ Œil d'Hermes</h1>
+  <span id="dot" class="status">chargement</span>
+</div>
+<div class="view" id="view">
+  <div class="msg" id="placeholder"><div class="spinner"></div><br>Connexion...</div>
+  <img id="snap" src="" alt="" style="display:none">
+</div>
+<div id="ts"></div>
+<div class="bar">
+  <button class="primary" onclick="refresh()" id="btn-refresh">📸 Rafraîchir</button>
+  <button onclick="toggleLed()" id="btn-led">💡 LED</button>
+</div>
+
+<script>
+var loading = false;
+
+async function refresh(){
+  if(loading) return;
+  loading = true;
+  var btn = document.getElementById('btn-refresh');
+  btn.textContent = '⏳';
+  btn.className = 'loading';
+  try {
+    var r = await fetch('/api/capture?t='+Date.now());
+    if(!r.ok) throw new Error(r.status);
+    var blob = await r.blob();
+    var url = URL.createObjectURL(blob);
+    var img = document.getElementById('snap');
+    var old = img.src;
+    img.src = url;
+    img.style.display = 'block';
+    document.getElementById('placeholder').style.display = 'none';
+    if(old.startsWith('blob:')) URL.revokeObjectURL(old);
+    document.getElementById('ts').textContent = '🕐 '+new Date().toLocaleTimeString();
+    document.getElementById('dot').textContent = 'ONLINE';
+    document.getElementById('dot').className = 'status ok';
+  } catch(e) {
+    document.getElementById('dot').textContent = 'OFFLINE';
+    document.getElementById('dot').className = 'status err';
+    document.getElementById('ts').textContent = '❌ '+e.message;
+  }
+  btn.textContent = '📸 Rafraîchir';
+  btn.className = 'primary';
+  loading = false;
+}
+
+async function getInfo(){
+  try {
+    var r = await fetch('/api/info');
+    var d = await r.json();
+    updateLed(d.led === true || d.led === 'true');
+  } catch(e){}
+}
+
+function updateLed(on){
+  var btn = document.getElementById('btn-led');
+  btn.textContent = on ? '💡 ON' : '💡 OFF';
+  btn.className = on ? 'led-on' : '';
+}
+
+async function toggleLed(){
+  try {
+    var r = await fetch('/api/led?state=toggle');
+    var d = await r.json();
+    updateLed(d.led === true || d.led === 'true');
+  } catch(e){}
+}
+
+// Start
+refresh();
+getInfo();
+setInterval(refresh, 4000);
+setInterval(getInfo, 30000);
+</script>
+</body>
+</html>
