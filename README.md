@@ -38,6 +38,22 @@ _Alerts reach you anywhere — phone, desktop, even your smartwatch._
 - **Dovetail wall plate**: the console slides on/off the wall in one gesture — use it as a portable tablet
 - Fully **parametric OpenSCAD** source (adjust to your own battery)
 
+### 🧠 Hermes AI Integration (NEW!)
+- **YOLOv8 real-time object detection** — 80 classes, GPU-accelerated (RTX 3060), 3s inference
+- **Ollama + LLaVA natural language descriptions** — « Un homme en noir tient un smartphone »
+- **Motion-aware pipeline** — YOLO checks every 15s, Ollama runs only on person detection
+- **Smart Telegram alerts** — silent when nothing happens, instant delivery on detection
+- **AI Dashboard** — live stats, detection heatmap, multi-camera mosaic, event log
+- **Detection gallery** — last 50 person snapshots with AI descriptions
+- **Daily passage counter** — unique persons/vehicles with 5-min cooldown
+- **Anomaly detection** — night activity, first event in 24h, activity spikes
+- **Daily report** — scheduled summary at 20:00
+- **Multi-camera support** — `cameras.json` config, daemon loops all enabled cameras
+- **Telegram Mini App** — snapshot live, LED control, auto-refresh
+- **Auto-cleanup** — keeps 7 days of snapshots, only saves person detections
+
+> See [`hermes-ai/README.md`](hermes-ai/README.md) for setup instructions.
+
 ---
 
 ## 🏗️ System Architecture
