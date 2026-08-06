@@ -39,6 +39,7 @@
 
 // ================ CONFIGURATION ================
 const bool  DETECTION_ULTRASON      = false;
+const bool  DETECTION_PIR           = true;   // SR602 PIR sensor
 const float HYSTERESIS_CM           = 20.0;
 const int   MESURES_CONFIRMATION    = 3;
 const unsigned long INTERVALLE_MESURE_MS = 250;
@@ -60,6 +61,7 @@ const int   GHOST_MIN_HITS          = 4;
 // Pins
 #define TRIG_PIN 13
 #define ECHO_PIN 12
+#define PIR_PIN  14   // SR602 PIR sensor
 #define FLASH_LED_PIN 4
 #define REC_LED_PIN   33
 #define EXT_LED_PIN 4
@@ -1320,6 +1322,7 @@ void setup() {
 
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
+  pinMode(PIR_PIN, INPUT);      // SR602 PIR
   pinMode(FLASH_LED_PIN, OUTPUT);
   digitalWrite(FLASH_LED_PIN, LOW);
   pinMode(REC_LED_PIN, OUTPUT);
@@ -1484,7 +1487,7 @@ void loop() {
     }
   }
 
-  // ---------- Ghost Mode : decision ----------
+  // ---------- detection PIR (SR602) ----------\n  if (DETECTION_PIR) {\n    static bool pirLast = false;\n    bool pirNow = digitalRead(PIR_PIN);\n    \n    // Front montant: mouvement detecte\n    if (pirNow && !pirLast) {\n      if (GHOST_MODE_ENABLED && !ghostAnalyzing && !recording) {\n        startGhostRecording();\n      }\n    }\n    \n    // PIR actif pendant Ghost Mode: incrementer hits\n    if (pirNow && GHOST_MODE_ENABLED && ghostAnalyzing) {\n      portENTER_CRITICAL(&stateMux);\n      ghostHitCount++;\n      portEXIT_CRITICAL(&stateMux);\n    }\n    pirLast = pirNow;\n  }\n\n  // ---------- Ghost Mode : decision ----------
   if (GHOST_MODE_ENABLED && ghostAnalyzing) {
     if (now - ghostStartMs >= GHOST_ANALYZE_MS) {
       portENTER_CRITICAL(&stateMux);
