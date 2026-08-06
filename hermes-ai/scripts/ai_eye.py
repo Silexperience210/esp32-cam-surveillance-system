@@ -218,13 +218,12 @@ def ollama_describe(image_path: str) -> str:
         "le matin" if hour < 12 else ("l'apres-midi" if hour < 17 else "le soir (la luminosite baisse)"))
 
     prompt = (
-        f"Decris cette image de camera de surveillance en une phrase en francais. "
-        f"Il est {now.strftime('%Hh%M')}, nous sommes {moment}. "
-        f"Important: si l'image est sombre, ne dis pas juste \"c'est sombre\" — "
-        f"dis si les lumieres semblent eteintes, ou si c'est la lumiere du jour qui manque. "
-        f"Decris: qui ou quoi est visible, combien de personnes, que font-ils, "
-        f"quelle est la source de lumiere, et l'ambiance generale. "
-        f"Sois concis (1 phrase). Image: {image_path}"
+        f"Decris UNIQUEMENT les personnes et animaux visibles dans cette image de surveillance. "
+        f"Ne decris PAS le decor, les murs, les objets, les meubles ou l'arriere-plan. "
+        f"Pour chaque personne: position dans la piece, ce qu'elle fait, vetements si visibles. "
+        f"Il est {now.strftime('%Hh%M')}, {moment}. "
+        f"Si personne n'est visible, dis juste \"Personne\". "
+        f"Une phrase maximum. Image: {image_path}"
     )
     try:
         r = subprocess.run(
