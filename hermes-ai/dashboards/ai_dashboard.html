@@ -207,6 +207,8 @@ function liveView(name) {
              onclick="event.stopPropagation()">
         <button onclick="this.parentElement.parentElement.remove()" 
                 style="position:absolute;top:16px;right:16px;background:#e74c3c;color:#fff;border:0;padding:8px 16px;border-radius:6px;font-size:1rem;cursor:pointer">✕ Fermer</button>
+        <button onclick="event.stopPropagation();fetch('/api/led?state=toggle')" 
+                style="position:absolute;top:16px;right:80px;background:#f39c12;color:#000;border:0;padding:8px 16px;border-radius:6px;font-size:1rem;cursor:pointer;font-weight:bold">💡 LED</button>
         <div style="position:absolute;bottom:16px;color:#ccc;font-family:monospace;font-size:0.8rem">🔴 Live — ${name} — 192.168.1.178:81</div>
       </div>`;
     document.body.appendChild(modal);
