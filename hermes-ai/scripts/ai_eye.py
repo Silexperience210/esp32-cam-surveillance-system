@@ -55,8 +55,9 @@ def ai_toggle(on: bool):
 def capture():
     import urllib.request
     try:
-        req = urllib.request.urlopen(f"{CAMERA_URL}/capture", timeout=8)
-        data = req.read()
+        req = urllib.request.Request(f"{CAMERA_URL}/capture")
+        req.add_header("X-Auth-Token", "hermes2024")
+        data = urllib.request.urlopen(req, timeout=8).read()
         ts = datetime.now()
         path = SNAPSHOT_DIR / f"snap_{ts.strftime('%Y%m%d_%H%M%S')}.jpg"
         with open(path, "wb") as f:
@@ -337,12 +338,14 @@ def motion_detected(threshold: float = MOTION_THRESHOLD) -> tuple:
         import numpy as np
 
         # Frame 1
-        req1 = urllib.request.urlopen(f"{CAMERA_URL}/capture", timeout=8)
-        data1 = req1.read()
+        req1 = urllib.request.Request(f"{CAMERA_URL}/capture")
+        req1.add_header("X-Auth-Token", "hermes2024")
+        data1 = urllib.request.urlopen(req1, timeout=8).read()
         time.sleep(0.8)
         # Frame 2
-        req2 = urllib.request.urlopen(f"{CAMERA_URL}/capture", timeout=8)
-        data2 = req2.read()
+        req2 = urllib.request.Request(f"{CAMERA_URL}/capture")
+        req2.add_header("X-Auth-Token", "hermes2024")
+        data2 = urllib.request.urlopen(req2, timeout=8).read()
 
         # Comparer en basse resolution pour la vitesse
         img1 = Image.open(io.BytesIO(data1)).convert("L").resize((160, 120))

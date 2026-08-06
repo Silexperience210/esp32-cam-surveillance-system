@@ -7,15 +7,18 @@ from pathlib import Path
 
 app = Flask(__name__)
 CAMERA = "http://192.168.1.178"
+CAMERA_STREAM = "http://192.168.1.178:81"
+API_TOKEN = "hermes2024"
 HOME = Path.home()
 DASHBOARD_DIR = HOME / ".hermes" / "dashboards"
 BASE_DIR = HOME / ".hermes" / "camera"
 AI_LOG = BASE_DIR / "ai_events.jsonl"
 FLAG_FILE = BASE_DIR / "ai_enabled"
 
-def proxy(url, timeout=8):
+def proxy(url, timeout=15):
     try:
         req = urllib.request.Request(url)
+        req.add_header("X-Auth-Token", API_TOKEN)
         for h in ['Accept', 'Content-Type']:
             if h in request.headers: req.add_header(h, request.headers[h])
         resp = urllib.request.urlopen(req, timeout=timeout)
