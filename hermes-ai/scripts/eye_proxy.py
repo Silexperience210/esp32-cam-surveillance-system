@@ -178,5 +178,17 @@ def api_cameras():
         with open(cf) as f: return json.load(f)
     return {"cameras": [{"name": "Camera", "url": CAMERA}]}
 
-if __name__ == "__main__":
+@app.route("/api/stream")
+def api_stream():
+    """Proxy du stream MJPEG (port 81)."""
+    def generate():
+        import requests
+        try:
+            r = requests.get(f"{CAMERA_STREAM}/stream", headers={"X-Auth-Token": API_TOKEN},
+                           stream=True, timeout=30)
+            for chunk in r.iter_content(chunk_size=4096):
+                if chunk:
+                    yield chunk
+        except: pass
+    return Response(generate(), content_type="multipart/x-mixed-replace; boundary=123456789000000000000987654321")
     app.run(host="127.0.0.1", port=8084, debug=False)
