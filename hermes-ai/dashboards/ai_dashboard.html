@@ -110,25 +110,54 @@ function forceAnalyze() {
   fetch(API + 'analyze').then(() => setTimeout(load, 2000));
 }
 
-// Heatmap canvas
-function drawHeatmap() {
+// Heatmap canvas — vraies données de détection
+async function drawHeatmap() {
   const canvas = document.getElementById('heatmap-canvas');
   const ctx = canvas.getContext('2d');
   canvas.width = canvas.offsetWidth;
   canvas.height = canvas.offsetHeight;
-  ctx.fillStyle = '#0a0a0a';
+  ctx.fillStyle = '#080808';
   ctx.fillRect(0,0,canvas.width,canvas.height);
-  // Points de chaleur simulés (sera remplacé par vraies données)
-  for(let i=0;i<20;i++) {
-    const x = Math.random() * canvas.width;
-    const y = Math.random() * canvas.height;
-    const r = 5 + Math.random() * 30;
-    const alpha = 0.02 + Math.random() * 0.08;
-    const gradient = ctx.createRadialGradient(x,y,0,x,y,r);
-    gradient.addColorStop(0, `rgba(247,147,26,${alpha})`);
-    gradient.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(x-r,y-r,r*2,r*2);
+  
+  try {
+    const r = await fetch(API + 'heatmap');
+    const d = await r.json();
+    const points = d.points || [];
+    const [iw, ih] = d.image_size || [1600, 1200];
+    
+    // Grouper par proximité pour intensité
+    const grid = {};
+    for (const p of points) {
+      const gx = Math.floor(p.x * 20);
+      const gy = Math.floor(p.y * 20);
+      const key = `${gx},${gy}`;
+      grid[key] = (grid[key] || 0) + 1;
+    }
+    
+    const maxCount = Math.max(1, ...Object.values(grid));
+    for (const [key, count] of Object.entries(grid)) {
+      const [gx, gy] = key.split(',').map(Number);
+      const x = (gx / 20) * canvas.width;
+      const y = (gy / 20) * canvas.height;
+      const alpha = count / maxCount * 0.7;
+      const r = 5 + (count / maxCount) * 40;
+      
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, r);
+      gradient.addColorStop(0, `rgba(247,147,26,${alpha})`);
+      gradient.addColorStop(0.5, `rgba(231,76,60,${alpha*0.4})`);
+      gradient.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(x-r, y-r, r*2, r*2);
+    }
+    
+    // Label compteur
+    ctx.fillStyle = '#666';
+    ctx.font = '10px monospace';
+    ctx.fillText(`${points.length} points / 24h`, 8, canvas.height-6);
+  } catch(e) {
+    ctx.fillStyle = '#444';
+    ctx.font = '12px monospace';
+    ctx.fillText('Données heatmap en attente...', 20, canvas.height/2);
   }
 }
 
