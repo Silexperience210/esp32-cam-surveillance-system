@@ -327,7 +327,7 @@ def check_counter(detections: list, ts: datetime) -> dict:
     return day_data
 
 
-MOTION_THRESHOLD = 0.01  # 1% de pixels = mouvement (plus sensible)
+MOTION_THRESHOLD = 0.005  # 0.5% — ultra sensible pour faible luminosité
 
 def motion_detected(threshold: float = MOTION_THRESHOLD) -> tuple:
     """Compare deux frames a 1s d'intervalle. CPU uniquement, 0 GPU."""
@@ -364,9 +364,10 @@ def motion_detected(threshold: float = MOTION_THRESHOLD) -> tuple:
 
 
 # ─── PIPELINE ───────────────────────────────────────────
-def analyze(save=True, require_motion: bool = True) -> dict:
-    """Pipeline intelligent: motion -> capture -> YOLO -> description.
-    Si require_motion=True, ne lance YOLO que si mouvement detecte (0 GPU sinon)."""
+def analyze(save=True, require_motion: bool = True, skip_ollama: bool = False) -> dict:
+    """Pipeline intelligent: motion -> capture -> YOLO -> Ollama -> alerte.
+    Si require_motion=True, ne lance YOLO que si mouvement detecte.
+    Si skip_ollama=True, saute Ollama (plus rapide, ~3s vs ~8s)."""
 
     if not ai_enabled():
         return {"status": "disabled", "reason": "IA suspendue"}
@@ -390,10 +391,13 @@ def analyze(save=True, require_motion: bool = True) -> dict:
     detections = detect_objects(str(path))
     yolo_desc = describe(detections)
 
-    # Description: Ollama (si dispo) sinon YOLO enrichi
-    ollama_desc = ollama_describe(str(path))
-    if ollama_desc:
-        full_desc = ollama_desc
+    # Description: Ollama (si dispo et pas skip) sinon YOLO enrichi
+    if not skip_ollama:
+        ollama_desc = ollama_describe(str(path))
+        if ollama_desc:
+            full_desc = ollama_desc
+        else:
+            full_desc = enrich_description(detections, yolo_desc)
     else:
         full_desc = enrich_description(detections, yolo_desc)
 
@@ -499,11 +503,19 @@ if __name__ == "__main__":
         days = int(sys.argv[2]) if len(sys.argv) > 2 else CLEANUP_DAYS
         cleanup(days)
     elif sys.argv[1] == "--loop":
-        # Pour usage cron: analyse si activé
+        # Pour usage cron: analyse si active
         if not ai_enabled():
             sys.exit(0)
         r = analyze()
-        # Sortie compacte pour cron
-        print(f"{r['description']} ({r['count']} objets)" if r.get('description') else "erreur")
+        print(f"{r.get('description_full', r.get('description','erreur'))} ({r.get('count',0)} objets)" if r.get('description_full') else "erreur")
+    elif sys.argv[1] == "--yolo-only":
+        # YOLO direct, sans filtre motion (pour faible luminosite)
+        if not ai_enabled():
+            sys.exit(0)
+        r = analyze(require_motion=False)
+        desc = r.get('description_full','')
+        alert = r.get('alert', False)
+        if alert or 'personne' in desc.lower() or 'person' in str(r.get('detections','')).lower():
+            print(f"{'🚨' if alert else '👤'} {desc}")
     else:
         print(__doc__)
