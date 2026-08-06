@@ -35,6 +35,10 @@ def mini_app(): return send_from_directory(DASHBOARD_DIR, "eye_telegram.html")
 def manifest():
     return send_from_directory(DASHBOARD_DIR, "manifest.json")
 
+@app.route("/api/icon")
+def api_icon():
+    return send_from_directory(DASHBOARD_DIR, "icon.png")
+
 @app.route("/dashboard")
 def dashboard(): return send_from_directory(DASHBOARD_DIR, "ai_dashboard.html")
 
