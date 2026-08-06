@@ -34,6 +34,7 @@
 #include <Preferences.h>
 #include <ESPmDNS.h>
 #include "esp_task_wdt.h"
+#include "soc/rtc_cntl_reg.h"
 #include "avi_writer.h"
 
 // ================ CONFIGURATION ================
@@ -1313,6 +1314,8 @@ bool initSD() {
 
 void setup() {
   Serial.begin(115200);
+  // Désactiver brownout detector (USB pas assez puissant pour UXGA + WiFi)
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
   Serial.println("\n=== ESP32-CAM Surveillance v3 (Corrige Complet + Ghost Mode) ===");
 
   pinMode(TRIG_PIN, OUTPUT);
@@ -1378,7 +1381,8 @@ void setup() {
     startConfigPortal();
     lastWifiOkMs = millis();
     lastLoopAliveMs = millis();
-    esp_task_wdt_init(WDT_TIMEOUT_S, true);
+    esp_task_wdt_config_t wdt_cfg = { .timeout_ms = WDT_TIMEOUT_S * 1000, .trigger_panic = true };
+    esp_task_wdt_init(&wdt_cfg);
     esp_task_wdt_add(NULL);
     return;
   }
@@ -1408,7 +1412,8 @@ void setup() {
   }
 
   // Watchdog natif ESP32
-  esp_task_wdt_init(WDT_TIMEOUT_S, true);
+  esp_task_wdt_config_t wdt_cfg2 = { .timeout_ms = WDT_TIMEOUT_S * 1000, .trigger_panic = true };
+  esp_task_wdt_init(&wdt_cfg2);
   esp_task_wdt_add(NULL);
   Serial.println("Watchdog natif actif (" + String(WDT_TIMEOUT_S) + "s)");
 
