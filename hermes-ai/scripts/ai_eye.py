@@ -55,9 +55,18 @@ def ai_toggle(on: bool):
 def capture():
     import urllib.request
     try:
+        # Allumer flash LED pour meilleure qualité
+        try:
+            urllib.request.urlopen(f"{CAMERA_URL}/led?state=on", timeout=3)
+        except: pass
+        time.sleep(0.3)
         req = urllib.request.Request(f"{CAMERA_URL}/capture")
         req.add_header("X-Auth-Token", "hermes2024")
         data = urllib.request.urlopen(req, timeout=8).read()
+        # Éteindre flash
+        try:
+            urllib.request.urlopen(f"{CAMERA_URL}/led?state=off", timeout=3)
+        except: pass
         ts = datetime.now()
         path = SNAPSHOT_DIR / f"snap_{ts.strftime('%Y%m%d_%H%M%S')}.jpg"
         with open(path, "wb") as f:

@@ -66,6 +66,16 @@ h1{color:var(--accent);font-size:1.2rem;margin-bottom:16px}
     <h2>📋 Derniers événements</h2>
     <div id="events">Chargement...</div>
   </div>
+  <div class="card" id="anomaly-card" style="display:none">
+    <h2>🔮 Anomalies</h2>
+    <div id="anomalies"></div>
+  </div>
+</div>
+<div class="grid" style="margin-top:12px">
+  <div class="card">
+    <h2>🔄 Multi-caméras tracking</h2>
+    <div id="tracking-view">Chargement...</div>
+  </div>
 </div>
 <div class="grid" style="margin-top:12px" id="mosaic">
   <div class="card" style="grid-column:1/-1">
@@ -172,7 +182,41 @@ async function drawHeatmap() {
 
 load();
 drawHeatmap();
-setInterval(load, 10000);
+// SSE live updates — remplace le polling
+const es = new EventSource('/api/ai/stream');
+es.onmessage = function(e) {
+  try {
+    const d = JSON.parse(e.data);
+    // Counter live
+    if (d.counter) {
+      document.getElementById('person-count').textContent = d.counter.persons || 0;
+      document.getElementById('vehicle-count').textContent = d.vehicles || 0;
+    }
+    document.getElementById('snap-count').textContent = d.snapshots || 0;
+    document.getElementById('ai-status').innerHTML = d.status
+      ? '<span class="badge on">ON</span>'
+      : '<span class="badge off">OFF</span>';
+    // Events live (last 60s)
+    if (d.events && d.events.length > 0) {
+      const container = document.getElementById('events');
+      container.innerHTML = d.events.slice(-15).reverse().map(e => {
+        const hasPerson = e.desc.toLowerCase().includes('personne');
+        const hasVehicle = e.desc.toLowerCase().includes('vehicule');
+        const cls = hasPerson ? 'person' : (hasVehicle ? 'vehicle' : 'none');
+        const icon = hasPerson ? '👤' : (hasVehicle ? '🚗' : '👁️');
+        return `<div class="event ${cls}"><span class="time">${e.time}</span><span class="icon">${icon}</span><span class="desc">${e.desc}${e.alert ? ' 🚨' : ''}</span></div>`;
+      }).join('');
+    }
+    // Anomalies
+    if (d.anomalies && d.anomalies.length > 0) {
+      document.getElementById('anomaly-card').style.display = '';
+      document.getElementById('anomalies').innerHTML = d.anomalies.map(a =>
+        `<div class="event none"><span class="icon">${a.severity||'⚠️'}</span><span class="desc">${a.message}</span></div>`
+      ).join('');
+    }
+  } catch(ex) {}
+};
+es.onerror = () => { /* reconnect auto */ };
 setInterval(drawHeatmap, 30000);
 
 // Multi-cameras mosaic
@@ -195,6 +239,27 @@ async function loadCameras() {
   } catch(e) {}
 }
 loadCameras();
+
+// Multi-camera tracking
+async function loadTracking() {
+  try {
+    const r = await fetch('/api/ai/tracking');
+    const d = await r.json();
+    const container = document.getElementById('tracking-view');
+    if (!d.tracks || d.tracks.length === 0) {
+      container.innerHTML = '<span style="color:var(--dim)">Aucune camera configuree</span>';
+      return;
+    }
+    container.innerHTML = d.tracks.map(t => {
+      const evts = t.events.slice(-5).reverse().map(e =>
+        `<div class="event none"><span class="time">${e.time.substring(11,19)}</span><span class="icon">👤</span><span class="desc">${e.camera}: ${e.desc||'?'}</span></div>`
+      ).join('');
+      return `<div style="margin-bottom:8px"><strong>📷 ${t.camera}</strong> (${t.events.length} passages)</div>${evts}`;
+    }).join('<hr style="border-color:var(--border);margin:6px 0">');
+  } catch(e) {}
+}
+loadTracking();
+setInterval(loadTracking, 15000);
 
 // Live modal
 function liveView(name) {

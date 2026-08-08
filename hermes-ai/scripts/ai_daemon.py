@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hermes AI Eye Daemon — multi-cameras, YOLO 15s, Telegram direct"""
+"""Hermes AI Eye Daemon — YOLO only, rapide et fiable"""
 import time, os, sys, json, urllib.request
 from pathlib import Path
 
@@ -11,6 +11,10 @@ SYS_PATH = str(HOME / ".hermes" / "scripts")
 if SYS_PATH not in sys.path: sys.path.insert(0, SYS_PATH)
 exec(open(HOME / ".hermes" / "scripts" / "ai_eye.py").read().split("if __name__")[0])
 
+FR = {'person':'👤 personne','dog':'🐕 chien','cat':'🐱 chat','bird':'🐦 oiseau',
+      'car':'🚗 voiture','truck':'🚛 camion','motorcycle':'🏍️ moto','bicycle':'🚲 vélo',
+      'horse':'🐴 cheval','sheep':'🐑 mouton','cow':'🐄 vache'}
+
 def load_cameras():
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE) as f:
@@ -20,24 +24,23 @@ def load_cameras():
 def telegram_send(text):
     try:
         env = HOME / ".hermes" / ".env"
-        token = chat_id = ""
+        token = ""
+        chat_ids = ["540124594", "7686686467"]
         with open(env) as f:
             for line in f:
                 if line.startswith("TELEGRAM_BOT_TOKEN="):
                     token = line.split("=",1)[1].strip().strip('"').strip("'")
-                if line.startswith("TELEGRAM_CHAT_ID="):
-                    chat_id = line.split("=",1)[1].strip().strip('"').strip("'")
-        if not chat_id: chat_id = "540124594"
-        if token and chat_id:
-            data = json.dumps({"chat_id":chat_id,"text":text}).encode()
-            req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage",
-                data=data, headers={"Content-Type":"application/json"})
-            urllib.request.urlopen(req, timeout=5)
+        if token:
+            for cid in chat_ids:
+                data = json.dumps({"chat_id":cid,"text":text}).encode()
+                req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage",
+                    data=data, headers={"Content-Type":"application/json"})
+                urllib.request.urlopen(req, timeout=5)
     except: pass
 
 cameras = load_cameras()
-print(f"👁️ AI Daemon — {len(cameras)} camera(s)")
-last_desc = {}
+print(f"👁 AI Daemon — {len(cameras)} camera(s) [YOLO only]")
+last_key = {}
 
 while True:
     if not FLAG.exists():
@@ -49,25 +52,48 @@ while True:
         try:
             os.environ["CAMERA_URL"] = url
             r = analyze(require_motion=False, skip_ollama=True, save=False)
-            desc = r.get('description_full','')
+            dets = r.get('detections',[])
             alert = r.get('alert',False)
             count = r.get('count',0)
-            has_person = alert or 'person' in str(r.get('detections','')).lower()
-            if has_person:
-                r2 = analyze(require_motion=False, skip_ollama=False, save=True)
-                desc = r2.get('description_full',desc)
-                alert = r2.get('alert',alert)
-                count = r2.get('count',count)
+            has_person = alert or 'person' in str(dets).lower()
+
+            # Description YOLO
+            if not dets:
+                desc = "RAS"
             else:
-                count = r.get('count',0)
+                counts = {}
+                for d in dets: counts[d['label']] = counts.get(d['label'],0)+1
+                parts = []
+                for l in ['person','dog','cat','bird','car','truck','motorcycle','bicycle','horse','sheep','cow']:
+                    if l in counts:
+                        n = counts[l]
+                        parts.append(f"{FR.get(l,l)}" if n==1 else f"{n} {FR.get(l,l)}s")
+                if not parts: parts = [f"{list(counts.keys())[0]} ({list(counts.values())[0]})"]
+                desc = ", ".join(parts)
+                if count > len(parts):
+                    desc += f" +{count-len(parts)} objets"
+
+            if has_person:
+                r2 = analyze(require_motion=False, skip_ollama=True, save=True)
+                dets2 = r2.get('detections',dets)
+                alert = r2.get('alert',alert)
+                counts = {}
+                for d in dets2: counts[d['label']] = counts.get(d['label'],0)+1
+                parts = []
+                for l in ['person','dog','cat','bird','car','truck','motorcycle','bicycle','horse','sheep','cow']:
+                    if l in counts:
+                        n = counts[l]
+                        parts.append(f"{FR.get(l,l)}" if n==1 else f"{n} {FR.get(l,l)}s")
+                desc = ", ".join(parts)
+
             key = f"{name}:{desc}"
-            if (alert or has_person) and key != last_desc.get(name,''):
-                last_desc[name] = key
+            if (alert or has_person) and key != last_key.get(name,''):
+                last_key[name] = key
                 emoji = "🚨" if alert else "👤"
-                msg = f"{emoji} [{name}] {desc} ({count} objets)"
+                msg = f"{emoji} [{name}] {desc}"
                 telegram_send(msg)
-                print(msg[:120])
+                print(msg)
         except Exception as e:
-            print(f"⚠️ [{name}] {e}")
+            pass
         time.sleep(interval)
     time.sleep(1)

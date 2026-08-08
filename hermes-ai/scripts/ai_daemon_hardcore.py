@@ -2,6 +2,7 @@
 """Hermes AI Eye Daemon HARDCORE — YOLO + DeepFace + Pose + OWL-ViT"""
 import time, os, sys, json, urllib.request
 from pathlib import Path
+from datetime import datetime
 
 HOME = Path.home()
 BASE = HOME / ".hermes" / "camera"

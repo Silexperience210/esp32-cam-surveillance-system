@@ -18,6 +18,8 @@ HOME = Path.home()
 BASE_DIR = HOME / ".hermes" / "camera"
 SNAPSHOT_DIR = BASE_DIR / "snapshots"
 AI_LOG = BASE_DIR / "ai_events.jsonl"
+COUNTER_FILE = BASE_DIR / "daily_counter.json"
+PASSAGE_COOLDOWN = 300  # 5 minutes entre 2 passages distincts
 if not SNAPSHOT_DIR.exists(): SNAPSHOT_DIR.mkdir(parents=True)
 
 CAMERA_URL = os.environ.get("CAMERA_URL", "http://192.168.1.178")
@@ -43,7 +45,10 @@ def get_yolo():
     global _yolo
     if _yolo is None:
         from ultralytics import YOLO
-        _yolo = YOLO(BASE_DIR / "yolov8n.pt")
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        _yolo = YOLO(str(BASE_DIR / "yolov8n.pt"))
+        _yolo.to(device)
     return _yolo
 
 def get_deepface():
@@ -108,8 +113,9 @@ def yolo_detect(image_path):
 
 # ═══ NIVEAU 2 : DeepFace (identité) ═══
 def identify_face(image_path):
-    """Retourne le nom si connu, sinon 'inconnu'."""
+    """Retourne le nom si connu, sinon 'inconnu'. Utilise verify() 1:1."""
     try:
+        import numpy as np
         from deepface import DeepFace
         # Vérifier d'abord si un visage est présent
         img = cv2.imread(image_path)
@@ -119,15 +125,25 @@ def identify_face(image_path):
         if len(faces) == 0:
             return None  # pas de visage visible
 
-        # Chercher dans la base locale
+        # Chercher dans la base locale avec verify() (plus fiable que find())
         db = HOME / ".deepface_db"
         if db.exists():
-            dfs = DeepFace.find(img_path=image_path, db_path=str(db),
-                              model_name="Facenet", silent=True, enforce_detection=False)
-            if len(dfs) > 0 and len(dfs[0]) > 0:
-                best = dfs[0].iloc[0]
-                if best.get('Facenet_cosine', 1.0) < 0.4:
-                    return os.path.basename(best['identity']).split('.')[0]
+            best_name = None
+            best_dist = 1.0
+            for f in db.glob("*.jpg"):
+                try:
+                    result = DeepFace.verify(img1_path=str(f), img2_path=image_path,
+                                            model_name="Facenet", detector_backend="retinaface",
+                                            enforce_detection=False, silent=True)
+                    if result.get("verified"):
+                        dist = result.get("distance", 1.0)
+                        if dist < best_dist and dist < 0.4:
+                            best_dist = dist
+                            best_name = os.path.basename(str(f)).split('.')[0]
+                except:
+                    pass
+            if best_name:
+                return best_name
         return "inconnu"
     except Exception as e:
         return None  # erreur ou pas de visage
@@ -199,6 +215,40 @@ def owl_describe(image_path):
     except:
         return []
 
+# ═══ COMPTEUR DE PASSAGES ═══
+def check_counter(detections: list, ts: datetime) -> dict:
+    """Compteur de passages avec cooldown 5min. Retourne stats du jour."""
+    today = ts.strftime("%Y-%m-%d")
+    has_person = any(d.get("label") == "person" for d in detections)
+    
+    counter = {}
+    if COUNTER_FILE.exists():
+        with open(COUNTER_FILE) as f:
+            counter = json.load(f)
+    
+    day_data = counter.get(today, {
+        "persons": 0, "vehicles": 0,
+        "last_person_ts": None, "last_vehicle_ts": None
+    })
+    
+    if has_person:
+        last = day_data.get("last_person_ts")
+        if not last or (ts - datetime.fromisoformat(last)).total_seconds() > PASSAGE_COOLDOWN:
+            day_data["persons"] += 1
+            day_data["last_person_ts"] = ts.isoformat()
+    
+    has_vehicle = any(d.get("label") in ("car", "truck", "motorcycle") for d in detections)
+    if has_vehicle:
+        last = day_data.get("last_vehicle_ts")
+        if not last or (ts - datetime.fromisoformat(last)).total_seconds() > PASSAGE_COOLDOWN:
+            day_data["vehicles"] += 1
+            day_data["last_vehicle_ts"] = ts.isoformat()
+    
+    counter[today] = day_data
+    with open(COUNTER_FILE, "w") as f:
+        json.dump(counter, f)
+    return day_data
+
 # ═══ ANALYSE COMPLÈTE ═══
 def analyze(save=True):
     t0 = time.time()
@@ -251,8 +301,9 @@ def analyze(save=True):
     alert = has_person
 
     # Log
+    ts = datetime.now()
     event = {
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": ts.isoformat(),
         "description": desc,
         "identity": identity,
         "pose": pose,
@@ -263,7 +314,10 @@ def analyze(save=True):
         "image": img if save else None
     }
     if save:
+        # Mettre à jour le compteur de passages
+        counter = check_counter(detections, ts)
+        event["counter"] = counter
         with open(AI_LOG, "a") as f:
-            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+            f.write(json.dumps(event, ensure_ascii=False) + "\\n")
 
     return event
